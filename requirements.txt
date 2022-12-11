@@ -1,2 +1,2 @@
-nose
-sphinx
+plotly==5.11.0
+tenacity==8.1.0
