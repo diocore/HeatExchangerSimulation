@@ -196,9 +196,8 @@ def simulate_absorption_heat_pump(evaporator_temperature: float, desorber_temper
     Q_evaporator = mass_flow_rate_evaporator * (enthalpie_absorber - enthalpie_condenser)  # W
     Q_condenser = mass_flow_rate_condenser * (enthalpie_desorber - enthalpie_evaporator)  # W
 
-    Q_absorber = mass_flow_rate_absorber * (enthalpie_desorber - enthalpie_evaporator)
-    Q_desorber = mass_flow_rate_desorber * (enthalpie_absorber - enthalpie_condenser)
-
+    Q_absorber = Q_evaporator * 1.06
+    Q_desorber = Q_absorber
 
     # Berechne die Leistungszahl (COP)
     cop = (Q_condenser + Q_absorber) / Q_desorber
@@ -210,10 +209,83 @@ def simulate_absorption_heat_pump(evaporator_temperature: float, desorber_temper
             "Q_desorber": Q_desorber / 1e3,  # kW
             "COP": cop / 1e3}
 
+def simulate_absorption_heat_pump_Mixture(evaporator_temperature: float, desorber_temperature: float,
+                                  condenser_temperature: float, absorber_temperature: float,
+                                  volumetric_flow_rate: float, refrigerant='NH3'):
+    """
+    Diese Funktion simuliert eine Absorptionswärmepumpe.
+
+    Parameters:
+    evaporator_temperature (float): Die Temperatur des Verdampfers in Grad Celsius.
+    generator_temperature (float): Die Temperatur des Generators in Grad Celsius.
+    condenser_temperature (float): Die Temperatur des Kondensators in Grad Celsius.
+    absorber_temperature (float): Die Temperatur des Absorbers in Grad Celsius.
+    volumetric_flow_rate (float): Der Volumenstrom in m³/s.
+
+    Returns:
+    dict: Ein Wörterbuch, das die berechneten Größen enthält.
+    """
+    solvent = 'water'
+
+    # Konvertiere die Eingabetemperaturen in Kelvin
+    evaporator_temperature += 273.15
+    desorber_temperature += 273.15
+    condenser_temperature += 273.15
+    absorber_temperature += 273.15
+
+    liquid = 0
+    gas = 1
+
+    h_in_absorber_solution = 1000  # kJ/kg
+
+    absorber_temperature_in = 30 + 273.15
+    absorber_temperature_out = absorber_temperature_in - 20
+
+    h_in_absorber_solution = PropsSI('H', 'T', absorber_temperature_in, 'Q', gas, refrigerant) / 1e3
+    h_out_absorber_solution = PropsSI('H', 'T', absorber_temperature_out, 'Q', liquid, solvent) / 1e3 # kJ/kg
+
+    desorber_temperature_in = absorber_temperature_out
+    desorber_temperature_out = desorber_temperature_in + 50
+
+    h_in_desorber_solution = PropsSI('H', 'T', desorber_temperature_in, 'Q', liquid, solvent) / 1e3  # kJ/kg
+    h_out_desorber_solution = PropsSI('H', 'T', desorber_temperature_out, 'Q', gas, refrigerant) / 1e3  # kJ/kg
+
+    condensator_temperature_in = desorber_temperature_out
+    condensator_temperature_out = condensator_temperature_in - 30
+
+    h_in_condensator_refrigerant = PropsSI('H', 'T', condensator_temperature_in, 'Q', gas, refrigerant) / 1e3  # kJ/kg
+    h_out_condensator_refrigerant = PropsSI('H', 'T', condensator_temperature_out, 'Q', liquid, refrigerant) / 1e3  # kJ/kg
+
+    condensator_temperature_in = condensator_temperature_out
+    condensator_temperature_out = condensator_temperature_in + 80
+
+    h_in_evaporator_refrigerant = PropsSI('H', 'T', condensator_temperature_in, 'Q', liquid, refrigerant) / 1e3  # kJ/kg
+    h_out_evaporator_refrigerant = PropsSI('H', 'T', condensator_temperature_out, 'Q', gas, refrigerant) / 1e3  # kJ/kg
+
+    m_dot_solution = 0.5
+    m_dot_refrigerant = 0.2
+
+    Q_absorber = m_dot_solution * (h_out_absorber_solution - h_in_absorber_solution)
+    Q_desorber = m_dot_solution * (h_out_desorber_solution - h_in_desorber_solution)
+    Q_condenser = m_dot_refrigerant * (h_out_condensator_refrigerant - h_in_condensator_refrigerant)
+    Q_evaporator = m_dot_refrigerant * (h_out_evaporator_refrigerant - h_in_evaporator_refrigerant)
+
+    # Berechne die Leistungszahl (COP)
+    COP = (abs(Q_condenser) + abs(Q_absorber)) / (abs(Q_desorber) + abs(Q_evaporator))
+
+
+
+    return {"Q_evaporator": Q_evaporator,  # kW
+            "Q_condenser": Q_condenser,  # kW
+            "Q_absorber": Q_absorber,  # kW
+            "Q_desorber": Q_desorber,  # kW
+            "COP": COP }
+
+
 def main():
     # absorption_heat_pump_simulation(20, 80, 50, -10, 0.8)
 
-    simulation_results = simulate_absorption_heat_pump(-40, 40, 10, 20, 0.05, 'NH3')
+    simulation_results = simulate_absorption_heat_pump_Mixture(-40, 40, 10, 20, 0.05, 'NH3')
     for key, value in simulation_results.items():
         print(f"{key}: {value}")
 
