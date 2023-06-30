@@ -1,9 +1,15 @@
+import numpy as np
+from PySide6 import QtWidgets
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.backends.backend_template import FigureCanvas
 from matplotlib.figure import Figure
+from tespy.networks import Network
+
+
 
 import sys
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QWidget, QMainWindow
 from qt_material import apply_stylesheet
 
 from CoolProp.CoolProp import PropsSI
