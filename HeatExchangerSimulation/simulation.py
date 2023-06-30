@@ -1,10 +1,15 @@
+import numpy as np
+from PySide6 import QtWidgets
+from matplotlib import pyplot as plt
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.backends.backend_template import FigureCanvas
+from matplotlib.figure import Figure
 from tespy.networks import Network
 
 
 
 import sys
 from PySide6.QtWidgets import QApplication, QWidget, QMainWindow
-from HeatExchange_UI import Ui_Form
 from qt_material import apply_stylesheet
 
 
@@ -120,6 +125,7 @@ from CoolProp.CoolProp import PropsSI
 #         'coefficient_of_performance': coefficient_of_performance,
 #         'efficiency': efficiency
 #     }
+from HeatExchangerSimulation.HeatExchange_UI import Ui_Form
 
 
 def simulate_absorption_heat_pump(evaporator_temperature: float, desorber_temperature: float,
@@ -153,51 +159,56 @@ def simulate_absorption_heat_pump(evaporator_temperature: float, desorber_temper
     if any(temp < min_temp or temp > max_temp for temp in [evaporator_temperature, desorber_temperature,
                                                            condenser_temperature, absorber_temperature]):
         raise ValueError("Eine oder mehrere Temperaturen liegen außerhalb des gültigen Bereichs für NH3.")
+    liquid = 0
+    vapor = 1
+
 
     # Berechne die Drücke
-    evaporator_pressure = PropsSI('P', 'T', evaporator_temperature, 'Q', 0, coolant)  # Pa
-    generator_pressure = PropsSI('P', 'T', desorber_temperature, 'Q', 1, coolant)  # Pa
+    evaporator_pressure = PropsSI('P', 'T', evaporator_temperature, 'Q', liquid, coolant)  # Pa
+    generator_pressure = PropsSI('P', 'T', desorber_temperature, 'Q', vapor, coolant)  # Pa
 
     # Berechne die spezifischen Volumina
-    specific_volume_evaporator = 1 / PropsSI('D', 'T', evaporator_temperature, 'Q', 0, coolant)  # m³/kg
-    specific_volume_generator = 1 / PropsSI('D', 'T', desorber_temperature, 'Q', 1, coolant)  # m³/kg
+    specific_volume_evaporator = 1 / PropsSI('D', 'T', evaporator_temperature, 'Q', liquid, coolant)  # m³/kg
+    specific_volume_generator = 1 / PropsSI('D', 'T', desorber_temperature, 'Q', vapor, coolant)  # m³/kg
 
     # Berechne die Massenströme
     mass_flow_rate_evaporator = volumetric_flow_rate / specific_volume_evaporator  # kg/s
     mass_flow_rate_generator = volumetric_flow_rate / specific_volume_generator  # kg/s
 
     # Berechne die Wärmeströme
-    enthalpie_desorb = PropsSI('H', 'P', generator_pressure, 'Q', 1, coolant)
-    enthalpie_evapo = PropsSI('H', 'P', evaporator_pressure, 'Q', 0, coolant)
-    enthalpie_absorb = PropsSI('H', 'T', absorber_temperature, 'Q', 0, coolant)
-    enthalpie_conden = PropsSI('H', 'T', condenser_temperature, 'Q', 0, coolant)
+    enthalpie_desorb = PropsSI('H', 'P', generator_pressure, 'Q', vapor, coolant)
+    enthalpie_evapo = PropsSI('H', 'P', evaporator_pressure, 'Q', liquid, coolant)
+    enthalpie_absorb = PropsSI('H', 'T', absorber_temperature, 'Q', liquid, coolant)
+    enthalpie_conden = PropsSI('H', 'T', condenser_temperature, 'Q', liquid, coolant)
 
-    Q_in = mass_flow_rate_generator * (enthalpie_absorb - enthalpie_conden)  # W
-    Q_out = mass_flow_rate_evaporator * (enthalpie_desorb - enthalpie_evapo)  # W
+    Q_evaporator = mass_flow_rate_evaporator * (enthalpie_absorb - enthalpie_conden)  # W
+    Q_condenser = mass_flow_rate_generator * (enthalpie_desorb - enthalpie_evapo)  # W
+
+    Q_absorber = 1
+    Q_generator = 1
 
 
     # Berechne die Leistungszahl (COP)
-    cop = Q_out / Q_in
+    cop = (Q_condenser + Q_absorber) / Q_generator
 
-    # Berechne den Wirkungsgrad
-    efficiency = Q_out / (Q_in + Q_out)
 
-    return {"Heat Input": Q_in / 1e3,  # kW
-            "Heat Output": Q_out / 1e3,  # kW
-            "COP": cop / 1e3,
-            "Efficiency": efficiency}
+    return {"Heat Input": Q_evaporator / 1e3,  # kW
+            "Heat Output": Q_condenser / 1e3,  # kW
+            "COP": cop / 1e3}
 
 def main():
     # absorption_heat_pump_simulation(20, 80, 50, -10, 0.8)
 
-    for i in range(0,10):
-        simulation_results = simulate_absorption_heat_pump(-40, 40, 10, 20, 0.05, 'NH3')
-        for key, value in simulation_results.items():
-            print(i,f"{key}: {value}")
+    simulation_results = simulate_absorption_heat_pump(-40, 40, 10, 20, 0.05, 'NH3')
+    for key, value in simulation_results.items():
+        print(f"{key}: {value}")
+
+
 
 
 
 # Beispielaufruf der Funktion
+
 
 class MainWindow(QWidget):
     def __init__(self):
@@ -206,13 +217,64 @@ class MainWindow(QWidget):
 
         self.ui.setupUi(self)
 
+        with plt.style.context("rose-pine-moon"):
+            sc = MplCanvas(self, width=5, height=4, dpi=100)
+
+            # Example data
+            x = [*range(0, 20)]
+            y = [*range(0, 20)]
+
+            for i in y:
+                y[i] = i*i
+
+            # Generate additional points for smooth curve
+            x_smooth = np.linspace(min(x), max(x), 200)
+            y_smooth = np.interp(x_smooth, x, y)
+
+            sc.axes.plot(x_smooth, y_smooth, '-')
+
+            self.ui.layoutPlot_01.addWidget(sc)
+
+        self.ui.simulateButton.clicked.connect(self.simulate_clicked)
+
+    def simulate_clicked(self):
+
+        evaporator_T = float(self.ui.evaporator_temperature.text())
+        desorber_T = float(self.ui.desorber_temperature.text())
+        condenser_T = float(self.ui.condenser_temperature.text())
+        absorber_T = float(self.ui.absorber_temperature.text())
+        volume_flow_rate = float(self.ui.volumetric_flow_rate.text())
+        coolant = self.ui.coolant_var.text()
+        simulation_results = simulate_absorption_heat_pump(evaporator_T,
+                                                           desorber_T,
+                                                           condenser_T,
+                                                           absorber_T,
+                                                           volume_flow_rate,
+                                                           coolant)
+        for key, value in simulation_results.items():
+            print(f"{key}: {value}")
+
+
+        print('hallo')
+        # self.ui.tabWidget.indexOf(0).
+
+
+
+class MplCanvas(FigureCanvasQTAgg):
+
+    def __init__(self, parent=None, width=5, height=4, dpi=100):
+        fig = Figure(figsize=(width, height), dpi=dpi)
+        self.axes = fig.add_subplot(111)
+        super(MplCanvas, self).__init__(fig)
+
+
 
 if __name__ == "__main__":
     main()
 
     app = QApplication(sys.argv)
 
-    apply_stylesheet(app, theme='dark_teal.xml')
+    apply_stylesheet(app, theme='dark_lightgreen.xml')
 
     window = MainWindow()
     window.show()
