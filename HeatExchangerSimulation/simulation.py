@@ -160,40 +160,54 @@ def simulate_absorption_heat_pump(evaporator_temperature: float, desorber_temper
                                                            condenser_temperature, absorber_temperature]):
         raise ValueError("Eine oder mehrere Temperaturen liegen außerhalb des gültigen Bereichs für NH3.")
     liquid = 0
-    vapor = 1
+    gas = 1
+
 
 
     # Berechne die Drücke
     evaporator_pressure = PropsSI('P', 'T', evaporator_temperature, 'Q', liquid, coolant)  # Pa
-    generator_pressure = PropsSI('P', 'T', desorber_temperature, 'Q', vapor, coolant)  # Pa
+    desorber_pressure = PropsSI('P', 'T', desorber_temperature, 'Q', liquid, coolant)  # Pa
+
+    evaporator_pressure = 0.5 * 1e5  # Pa
+    absorber_pressure = 0.5 * 1e5  # Pa
+
+    desorber_pressure = 10 * 1e5  # Pa
+    desorber_condenser = 10 * 1e5  # Pa
+
 
     # Berechne die spezifischen Volumina
     specific_volume_evaporator = 1 / PropsSI('D', 'T', evaporator_temperature, 'Q', liquid, coolant)  # m³/kg
-    specific_volume_generator = 1 / PropsSI('D', 'T', desorber_temperature, 'Q', vapor, coolant)  # m³/kg
+    specific_volume_desorber = 1 / PropsSI('D', 'T', desorber_temperature, 'Q', liquid, coolant)  # m³/kg
+    specific_volume_absorber = 1 / PropsSI('D', 'T', absorber_temperature, 'Q', gas, coolant)  # m³/kg
+    specific_volume_condenser = 1 / PropsSI('D', 'T', condenser_temperature, 'Q', gas, coolant)  # m³/kg
 
     # Berechne die Massenströme
     mass_flow_rate_evaporator = volumetric_flow_rate / specific_volume_evaporator  # kg/s
-    mass_flow_rate_generator = volumetric_flow_rate / specific_volume_generator  # kg/s
+    mass_flow_rate_desorber = volumetric_flow_rate / specific_volume_desorber  # kg/s
+    mass_flow_rate_absorber = volumetric_flow_rate / specific_volume_absorber  # kg/s
+    mass_flow_rate_condenser = volumetric_flow_rate / specific_volume_condenser  # kg/s
 
     # Berechne die Wärmeströme
-    enthalpie_desorb = PropsSI('H', 'P', generator_pressure, 'Q', vapor, coolant)
-    enthalpie_evapo = PropsSI('H', 'P', evaporator_pressure, 'Q', liquid, coolant)
-    enthalpie_absorb = PropsSI('H', 'T', absorber_temperature, 'Q', liquid, coolant)
-    enthalpie_conden = PropsSI('H', 'T', condenser_temperature, 'Q', liquid, coolant)
+    enthalpie_desorber = PropsSI('H', 'P', desorber_pressure, 'Q', liquid, coolant)
+    enthalpie_evaporator = PropsSI('H', 'P', evaporator_pressure, 'Q', liquid, coolant)
+    enthalpie_absorber = PropsSI('H', 'T', absorber_temperature, 'Q', gas, coolant)
+    enthalpie_condenser = PropsSI('H', 'T', condenser_temperature, 'Q', gas, coolant)
 
-    Q_evaporator = mass_flow_rate_evaporator * (enthalpie_absorb - enthalpie_conden)  # W
-    Q_condenser = mass_flow_rate_generator * (enthalpie_desorb - enthalpie_evapo)  # W
+    Q_evaporator = mass_flow_rate_evaporator * (enthalpie_absorber - enthalpie_condenser)  # W
+    Q_condenser = mass_flow_rate_condenser * (enthalpie_desorber - enthalpie_evaporator)  # W
 
-    Q_absorber = 1
-    Q_generator = 1
+    Q_absorber = mass_flow_rate_absorber * (enthalpie_desorber - enthalpie_evaporator)
+    Q_desorber = mass_flow_rate_desorber * (enthalpie_absorber - enthalpie_condenser)
 
 
     # Berechne die Leistungszahl (COP)
-    cop = (Q_condenser + Q_absorber) / Q_generator
+    cop = (Q_condenser + Q_absorber) / Q_desorber
 
 
-    return {"Heat Input": Q_evaporator / 1e3,  # kW
-            "Heat Output": Q_condenser / 1e3,  # kW
+    return {"Q_evaporator": Q_evaporator / 1e3,  # kW
+            "Q_condenser": Q_condenser / 1e3,  # kW
+            "Q_absorber": Q_absorber / 1e3,  # kW
+            "Q_desorber": Q_desorber / 1e3,  # kW
             "COP": cop / 1e3}
 
 def main():
